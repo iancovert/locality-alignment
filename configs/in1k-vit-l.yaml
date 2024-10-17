@@ -1,0 +1,48 @@
+# Dataset
+data_dir: data/imagenet21k
+train_split: train
+val_split: val
+
+# Model
+teacher_model: vit_large_patch16_224.augreg_in21k_ft_in1k
+teacher_pretrained: true
+student_model: svit_large_patch16_224.augreg_in21k_ft_in1k
+student_pretrained: true
+
+# Batch size
+batch_size: 128
+validation_batch_size: 128
+grad_accum_steps: 2
+
+# System optimizations
+amp: true
+amp_dtype: bfloat16
+torchcompile: inductor
+
+# Optimizer
+opt: adamw
+weight_decay: 0.01
+clip_grad: 1.0
+opt_kwargs:
+  betas: [0.9, 0.95]
+
+# Learning rate schedule
+sched: cosine
+sched_on_updates: true
+lr: 2e-4
+min_lr: 2e-5
+warmup_lr: 2e-5
+epochs: 5
+warmup_epochs: 0
+
+# Augmentation and regularization
+train_crop_mode: rkrc
+color_jitter: null
+
+# Misc
+workers: 24
+pin_mem: true
+output: output
+experiment: in1k-vit-l-maskembed
+project: locality-alignment
+log_wandb: true
