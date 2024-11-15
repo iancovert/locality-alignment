@@ -163,15 +163,14 @@ def _create_moco_vit(variant: str, pretrained: bool = False, **kwargs) -> Vision
         if variant.startswith("vit_base"):
             # Load checkpoint.
             cache_dir = torch.hub.get_dir()
-            file_name = "vit-b-300ep.pth.tar"
-            local_path = os.path.join(cache_dir, "checkpoints", file_name)
+            local_path = os.path.join(cache_dir, "checkpoints", "vit-b-300ep.pth.tar")
 
-            url = f"https://dl.fbaipublicfiles.com/moco-v3/vit-b-300ep/{file_name}"
+            url = "https://dl.fbaipublicfiles.com/moco-v3/vit-b-300ep/vit-b-300ep.pth.tar"
             if os.path.exists(local_path):
-                logging.info(f"Loading moco/{file_name} from local path: {local_path}")
+                logging.info(f"Loading moco/vit-b-300ep.pth.tar from local path: {local_path}")
                 ckpt = torch.load(local_path, map_location=torch.device("cpu"))
             else:
-                logging.info(f"Downloading moco/{file_name} from url: {url}")
+                logging.info(f"Downloading moco/vit-b-300ep.pth.tar from url: {url}")
                 ckpt = torch.hub.load_state_dict_from_url(url, map_location=torch.device("cpu"))
             pretrained_dict = ckpt["state_dict"]
 

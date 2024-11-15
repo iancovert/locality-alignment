@@ -1,4 +1,4 @@
-# Modified from https://github.com/liuxingbin/dbot
+# Modified from https://github.com/liuxingbin/dbot/tree/beit
 
 import os
 import math
@@ -458,59 +458,58 @@ class dBOTCLIPVisionTransformer(nn.Module):
             raise NotImplementedError(f"Not support for layer id is {layer_id} now!")
 
 
+def load_state_dict(model, state_dict, prefix="", ignore_missing="relative_position_index"):
+    missing_keys = []
+    unexpected_keys = []
+    error_msgs = []
+    # copy state_dict so _load_from_state_dict can modify it
+    metadata = getattr(state_dict, "_metadata", None)
+    state_dict = state_dict.copy()
+    if metadata is not None:
+        state_dict._metadata = metadata
+
+    def load(module, prefix=""):
+        local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
+        module._load_from_state_dict(
+            state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs
+        )
+        for name, child in module._modules.items():
+            if child is not None:
+                load(child, prefix + name + ".")
+
+    load(model, prefix=prefix)
+
+    warn_missing_keys = []
+    ignore_missing_keys = []
+    for key in missing_keys:
+        keep_flag = True
+        for ignore_key in ignore_missing.split("|"):
+            if ignore_key in key:
+                keep_flag = False
+                break
+        if keep_flag:
+            warn_missing_keys.append(key)
+        else:
+            ignore_missing_keys.append(key)
+
+    missing_keys = warn_missing_keys
+
+    if len(missing_keys) > 0:
+        print("Weights of {} not initialized from pretrained model: {}".format(model.__class__.__name__, missing_keys))
+    if len(unexpected_keys) > 0:
+        print("Weights from pretrained model not used in {}: {}".format(model.__class__.__name__, unexpected_keys))
+    if len(ignore_missing_keys) > 0:
+        print(
+            "Ignored weights of {} not initialized from pretrained model: {}".format(
+                model.__class__.__name__, ignore_missing_keys
+            )
+        )
+    if len(error_msgs) > 0:
+        print("\n".join(error_msgs))
+
+
 def _load_dbot_clip_teacher(model, checkpoint):
-    def custom_load_state_dict(model, state_dict, prefix="", ignore_missing="relative_position_index"):
-        missing_keys = []
-        unexpected_keys = []
-        error_msgs = []
-        # copy state_dict so _load_from_state_dict can modify it
-        metadata = getattr(state_dict, "_metadata", None)
-        state_dict = state_dict.copy()
-        if metadata is not None:
-            state_dict._metadata = metadata
-
-        def load(module, prefix=""):
-            local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
-            module._load_from_state_dict(
-                state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs
-            )
-            for name, child in module._modules.items():
-                if child is not None:
-                    load(child, prefix + name + ".")
-
-        load(model, prefix=prefix)
-
-        warn_missing_keys = []
-        ignore_missing_keys = []
-        for key in missing_keys:
-            keep_flag = True
-            for ignore_key in ignore_missing.split("|"):
-                if ignore_key in key:
-                    keep_flag = False
-                    break
-            if keep_flag:
-                warn_missing_keys.append(key)
-            else:
-                ignore_missing_keys.append(key)
-
-        missing_keys = warn_missing_keys
-
-        if len(missing_keys) > 0:
-            print(
-                "Weights of {} not initialized from pretrained model: {}".format(model.__class__.__name__, missing_keys)
-            )
-        if len(unexpected_keys) > 0:
-            print("Weights from pretrained model not used in {}: {}".format(model.__class__.__name__, unexpected_keys))
-        if len(ignore_missing_keys) > 0:
-            print(
-                "Ignored weights of {} not initialized from pretrained model: {}".format(
-                    model.__class__.__name__, ignore_missing_keys
-                )
-            )
-        if len(error_msgs) > 0:
-            print("\n".join(error_msgs))
-
-    # Using default values.
+    # Using default values for arguments.
     model_key = "model|module"
     model_filter_name = ""
     model_prefix = ""
@@ -553,65 +552,65 @@ def _load_dbot_clip_teacher(model, checkpoint):
         if "relative_position_index" in key:
             checkpoint_model.pop(key)
 
-        # if "relative_position_bias_table" in key:
-        #     rel_pos_bias = checkpoint_model[key]
-        #     src_num_pos, num_attn_heads = rel_pos_bias.size()
-        #     dst_num_pos, _ = model.state_dict()[key].size()
-        #     dst_patch_shape = model.patch_embed.patch_shape
-        #     if dst_patch_shape[0] != dst_patch_shape[1]:
-        #         raise NotImplementedError()
-        #     num_extra_tokens = dst_num_pos - (dst_patch_shape[0] * 2 - 1) * (dst_patch_shape[1] * 2 - 1)
-        #     src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
-        #     dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
-        #     if src_size != dst_size:
-        #         print("Position interpolate for %s from %dx%d to %dx%d" % (key, src_size, src_size, dst_size, dst_size))
-        #         extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
-        #         rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
+        if "relative_position_bias_table" in key:
+            rel_pos_bias = checkpoint_model[key]
+            src_num_pos, num_attn_heads = rel_pos_bias.size()
+            dst_num_pos, _ = model.state_dict()[key].size()
+            dst_patch_shape = model.patch_embed.patch_shape
+            if dst_patch_shape[0] != dst_patch_shape[1]:
+                raise NotImplementedError()
+            num_extra_tokens = dst_num_pos - (dst_patch_shape[0] * 2 - 1) * (dst_patch_shape[1] * 2 - 1)
+            src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
+            dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
+            if src_size != dst_size:
+                print("Position interpolate for %s from %dx%d to %dx%d" % (key, src_size, src_size, dst_size, dst_size))
+                extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
+                rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
 
-        #         def geometric_progression(a, r, n):
-        #             return a * (1.0 - r**n) / (1.0 - r)
+                def geometric_progression(a, r, n):
+                    return a * (1.0 - r**n) / (1.0 - r)
 
-        #         left, right = 1.01, 1.5
-        #         while right - left > 1e-6:
-        #             q = (left + right) / 2.0
-        #             gp = geometric_progression(1, q, src_size // 2)
-        #             if gp > dst_size // 2:
-        #                 right = q
-        #             else:
-        #                 left = q
+                left, right = 1.01, 1.5
+                while right - left > 1e-6:
+                    q = (left + right) / 2.0
+                    gp = geometric_progression(1, q, src_size // 2)
+                    if gp > dst_size // 2:
+                        right = q
+                    else:
+                        left = q
 
-        #         # if q > 1.090307:
-        #         #     q = 1.090307
+                # if q > 1.090307:
+                #     q = 1.090307
 
-        #         dis = []
-        #         cur = 1
-        #         for i in range(src_size // 2):
-        #             dis.append(cur)
-        #             cur += q ** (i + 1)
+                dis = []
+                cur = 1
+                for i in range(src_size // 2):
+                    dis.append(cur)
+                    cur += q ** (i + 1)
 
-        #         r_ids = [-_ for _ in reversed(dis)]
+                r_ids = [-_ for _ in reversed(dis)]
 
-        #         x = r_ids + [0] + dis
-        #         y = r_ids + [0] + dis
+                x = r_ids + [0] + dis
+                y = r_ids + [0] + dis
 
-        #         t = dst_size // 2.0
-        #         dx = np.arange(-t, t + 0.1, 1.0)
-        #         dy = np.arange(-t, t + 0.1, 1.0)
+                t = dst_size // 2.0
+                dx = np.arange(-t, t + 0.1, 1.0)
+                dy = np.arange(-t, t + 0.1, 1.0)
 
-        #         print("Original positions = %s" % str(x))
-        #         print("Target positions = %s" % str(dx))
+                print("Original positions = %s" % str(x))
+                print("Target positions = %s" % str(dx))
 
-        #         all_rel_pos_bias = []
+                all_rel_pos_bias = []
 
-        #         for i in range(num_attn_heads):
-        #             z = rel_pos_bias[:, i].view(src_size, src_size).float().numpy()
-        #             f = interpolate.interp2d(x, y, z, kind="cubic")
-        #             all_rel_pos_bias.append(torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(rel_pos_bias.device))
+                for i in range(num_attn_heads):
+                    z = rel_pos_bias[:, i].view(src_size, src_size).float().numpy()
+                    f = interpolate.interp2d(x, y, z, kind="cubic")
+                    all_rel_pos_bias.append(torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(rel_pos_bias.device))
 
-        #         rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
+                rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
 
-        #         new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens), dim=0)
-        #         checkpoint_model[key] = new_rel_pos_bias
+                new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens), dim=0)
+                checkpoint_model[key] = new_rel_pos_bias
     # pdb.set_trace()
     # interpolate position embedding
     if ("pos_embed" in checkpoint_model) and (model.pos_embed is not None):
@@ -637,7 +636,7 @@ def _load_dbot_clip_teacher(model, checkpoint):
             new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
             checkpoint_model["pos_embed"] = new_pos_embed
 
-    custom_load_state_dict(model, checkpoint_model, prefix=model_prefix)
+    load_state_dict(model, checkpoint_model, prefix=model_prefix)
 
     return model
 
@@ -655,18 +654,17 @@ def _create_dbot_vit(variant: str, pretrained: bool = False, **kwargs) -> dBOTCL
     if pretrained and variant.startswith("vit_base"):
         # Load checkpoint.
         cache_dir = torch.hub.get_dir()
-        file_name = "85.7_clip_base_pre.pth"
-        local_path = os.path.join(cache_dir, "checkpoints", file_name)
+        local_path = os.path.join(cache_dir, "checkpoints", "85.7_clip_base_pre.pth")
 
-        url = f"https://lf3-nlp-opensource.bytetos.com/obj/nlp-opensource/mmodal/dbot/{file_name}"
+        url = "https://lf3-nlp-opensource.bytetos.com/obj/nlp-opensource/mmodal/dbot/85.7_clip_base_pre.pth"
         if os.path.exists(local_path):
-            logging.info(f"Loading {file_name} from local path: {local_path}")
+            logging.info(f"Loading 85.7_clip_base_pre.pth from local path: {local_path}")
             checkpoint = torch.load(local_path, map_location=torch.device("cpu"))
         else:
-            logging.info(f"Downloading {file_name} from url: {url}")
+            logging.info(f"Downloading 85.7_clip_base_pre.pth from url: {url}")
             checkpoint = torch.hub.load_state_dict_from_url(url, map_location=torch.device("cpu"))
 
-        # dBOT modifications.
+        # Model loading logic from https://github.com/liuxingbin/dbot/blob/beit/run_finetune.py
         model = _load_dbot_clip_teacher(model, checkpoint)
 
     else:
@@ -685,7 +683,7 @@ def vit_base_patch16_dbot_clip_224(pretrained: bool = False, **kwargs) -> dBOTCL
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        init_values=0.1,  # 0.1 for base, 1e-5 for large. set 0 to disable layer scale
+        init_values=0.1,
     )
     model = _create_dbot_vit(
         "vit_base_patch16_dbot_clip_224",
