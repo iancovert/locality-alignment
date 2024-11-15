@@ -547,13 +547,6 @@ def _load_dbot_clip_teacher(model, checkpoint):
 
         checkpoint_model.pop("rel_pos_bias.relative_position_bias_table")
 
-    # Add check for `rel_pos_bias` in the checkpoint but not in the model.
-    if (
-        "rel_pos_bias.relative_position_bias_table" in checkpoint_model
-        and "rel_pos_bias.relative_position_bias_table" not in model.state_dict()
-    ):
-        checkpoint_model.pop("rel_pos_bias.relative_position_bias_table")
-
     all_keys = list(checkpoint_model.keys())
     for key in all_keys:
         if "relative_position_index" in key:
@@ -691,6 +684,8 @@ def vit_base_patch16_dbot_clip_224(pretrained: bool = False, **kwargs) -> dBOTCL
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         init_values=0.1,
+        use_abs_pos_emb=False,
+        use_rel_pos_bias=True,
     )
     model = _create_dbot_vit(
         "vit_base_patch16_dbot_clip_224",
