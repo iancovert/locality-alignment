@@ -19,7 +19,7 @@ from timm.models.layers import drop_path, to_2tuple, trunc_normal_
 def _cfg(url="", **kwargs):
     return {
         "url": url,
-        "num_classes": 1000,
+        "num_classes": 0,
         "input_size": (3, 224, 224),
         "pool_size": None,
         "crop_pct": 0.9,
@@ -309,6 +309,7 @@ class dBOTCLIPVisionTransformer(nn.Module):
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.num_prefix_tokens = 1  # for timm compatibility
         # self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         if use_abs_pos_emb:
             self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
@@ -404,17 +405,18 @@ class dBOTCLIPVisionTransformer(nn.Module):
             x = blk(x, rel_pos_bias=rel_pos_bias)
 
         x = self.norm(x)
-        if self.fc_norm is not None:
-            t = x[:, 1:, :]
-            if return_patch_tokens:
-                return self.fc_norm(t)
-            else:
-                return self.fc_norm(t.mean(1))
-        else:
-            if return_patch_tokens:
-                return x[:, 1:]
-            else:
-                return x[:, 0]
+        return x
+        # if self.fc_norm is not None:
+        #     t = x[:, 1:, :]
+        #     if return_patch_tokens:
+        #         return self.fc_norm(t)
+        #     else:
+        #         return self.fc_norm(t.mean(1))
+        # else:
+        #     if return_patch_tokens:
+        #         return x[:, 1:]
+        #     else:
+        #         return x[:, 0]
 
     def forward(self, x, return_patch_tokens=False):
         x = self.forward_features(x, return_patch_tokens=return_patch_tokens)
@@ -681,11 +683,16 @@ def vit_base_patch16_dbot_clip_224(pretrained: bool = False, **kwargs) -> dBOTCL
         depth=12,
         num_heads=12,
         mlp_ratio=4,
-        qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        init_values=0.1,
-        use_abs_pos_emb=False,
+        drop_rate=0.0,
+        drop_path_rate=0.1,
+        attn_drop_rate=0.0,
+        use_mean_pooling=True,
+        init_scale=0.001,
         use_rel_pos_bias=True,
+        use_abs_pos_emb=False,
+        init_values=0.1,
+        qkv_bias=True,
     )
     model = _create_dbot_vit(
         "vit_base_patch16_dbot_clip_224",

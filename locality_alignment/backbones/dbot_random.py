@@ -45,7 +45,7 @@ class dBOTRandomVisionTransformer(VisionTransformer):
             outcome = self.fc_norm(x)
         else:
             x = self.norm(x)
-            outcome = x[:, 0]
+            return x
 
         return outcome
 
@@ -135,7 +135,8 @@ def _load_dbot_random_teacher(model, checkpoint):
     print(f"Non-matching keys: {non_matching_keys}")
 
     # manually initialize fc layer
-    trunc_normal_(model.head.weight, std=0.01)
+    if isinstance(model.head, nn.Linear):
+        trunc_normal_(model.head.weight, std=0.01)
 
     return model
 
@@ -151,10 +152,10 @@ def _create_dbot_vit(variant: str, pretrained: bool = False, **kwargs) -> dBOTRa
         "crop_mode": "center",
         "mean": (0.485, 0.456, 0.406),
         "std": (0.229, 0.224, 0.225),
-        "num_classes": 1000,
+        "num_classes": 0,
         "pool_size": None,
         "first_conv": "patch_embed.proj",
-        "classifier": "head",
+        "classifier": None,
     }
 
     if "pretrained_cfg" not in kwargs or (
