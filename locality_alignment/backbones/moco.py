@@ -162,7 +162,9 @@ def _create_moco_vit(variant: str, pretrained: bool = False, **kwargs) -> Vision
     if pretrained:
         if variant.startswith("vit_base"):
             # Load checkpoint.
-            local_path = "/sailhome/icovert/.cache/torch/hub/checkpoints/vit-b-300ep.pth.tar"
+            cache_dir = torch.hub.get_dir()
+            local_path = os.path.join(cache_dir, "checkpoints", "vit-b-300ep.pth.tar")
+
             url = "https://dl.fbaipublicfiles.com/moco-v3/vit-b-300ep/vit-b-300ep.pth.tar"
             if os.path.exists(local_path):
                 logging.info(f"Loading moco/vit-b-300ep.pth.tar from local path: {local_path}")
