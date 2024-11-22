@@ -405,6 +405,7 @@ class dBOTCLIPVisionTransformer(nn.Module):
             x = blk(x, rel_pos_bias=rel_pos_bias)
 
         x = self.norm(x)
+        x = self.fc_norm(x)
         return x
         # if self.fc_norm is not None:
         #     t = x[:, 1:, :]
