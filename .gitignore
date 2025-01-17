@@ -28,6 +28,8 @@ MANIFEST
 data
 wandb
 output
+output_ft
+output_mim
 *.out
 
 # Auth Tokens / Hidden Files

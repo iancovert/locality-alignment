@@ -12,8 +12,8 @@ from typing import Optional
 import timm
 from timm.models.vision_transformer import VisionTransformer
 from timm.layers.helpers import to_2tuple
-from timm.models.layers import PatchEmbed
-from timm.models.registry import register_model
+from timm.layers import PatchEmbed
+from timm.models import register_model
 
 
 class VisionTransformerMoCo(VisionTransformer):

@@ -37,7 +37,7 @@ from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.utils import NativeScaler as GradScaler
 
 from locality_alignment import (
-    load_checkpoint,
+    load_checkpoint_auto,
     convert_to_teacher_model,
     convert_to_student_model,
     CheckpointSaver,
@@ -195,7 +195,7 @@ group.add_argument("--mixup", type=float, default=0.0, help="mixup alpha, mixup 
 group.add_argument("--cutmix", type=float, default=0.0, help="cutmix alpha, cutmix enabled if > 0. (default: 0.)")
 group.add_argument("--cutmix-minmax", type=float, nargs="+", default=None, help="cutmix min/max ratio, overrides alpha and enables cutmix if set (default: None)")
 group.add_argument("--mixup-prob", type=float, default=1.0, help="Probability of performing mixup or cutmix when either/both is enabled")
-group.add_argument("--mixup-switch-prob",type=float,default=0.5,help="Probability of switching to cutmix when both mixup and cutmix enabled")
+group.add_argument("--mixup-switch-prob", type=float, default=0.5, help="Probability of switching to cutmix when both mixup and cutmix enabled")
 group.add_argument("--mixup-mode", type=str, default="batch", help='How to apply mixup/cutmix params. Per "batch", "pair", or "elem"')
 group.add_argument("--mixup-off-epoch", default=0, type=int, metavar="N", help="Turn off mixup after this epoch, disabled if 0 (default: 0)")
 group.add_argument("--train-interpolation", type=str, default="random", help='Training interpolation (random, bilinear, bicubic default: "random")')
@@ -289,7 +289,7 @@ def main():
         in_chans = args.input_size[0]
 
     # Verify loss function.
-    assert args.loss_function in ("mse", "cosine")
+    assert args.loss_function in ("mse", "cosine", "l1", "masked_mse", "unmasked_mse")
 
     # Create teacher model that allows masking.
     assert args.teacher_pretrained or args.teacher_checkpoint, "Teacher must be pretrained"
@@ -303,7 +303,9 @@ def main():
         **args.teacher_model_kwargs,
     )
     if args.teacher_checkpoint:
-        load_checkpoint(teacher, args.teacher_checkpoint, strict=False)
+        non_matching_keys = load_checkpoint_auto(teacher, args.teacher_checkpoint, strict=False)
+        if utils.is_primary(args):
+            _logger.info(f"Loaded teacher model from {args.teacher_checkpoint}, non-matching keys: {non_matching_keys}")
     teacher_patch_size = teacher.patch_embed.patch_size[0]
     teacher = convert_to_teacher_model(teacher, skip_blocks=args.skip_blocks, prefix_only=args.prefix_only)
     teacher.eval()
@@ -461,7 +463,7 @@ def main():
             device="cpu" if args.model_ema_force_cpu else None,
         )
         if args.resume:
-            load_checkpoint(student_ema.module, args.resume, use_ema=True)
+            load_checkpoint_auto(student_ema.module, args.resume, use_ema=True)
         if args.torchcompile:
             student_ema = torch.compile(student_ema, backend=args.torchcompile)
 
@@ -900,6 +902,20 @@ def train_one_epoch(
                     loss = torch.nn.functional.mse_loss(reconstruction, masked_preds)
                 elif loss_function == "cosine":
                     loss = 1 - torch.nn.functional.cosine_similarity(reconstruction, masked_preds, dim=-1).mean()
+                elif loss_function == "l1":
+                    loss = torch.nn.functional.l1_loss(reconstruction, masked_preds)
+                elif loss_function == "masked_mse":
+                    # Calculate loss for masked tokens only.
+                    if reconstruction.shape[1] > mask.shape[1]:
+                        num_prefix_tokens = reconstruction.shape[1] - mask.shape[1]
+                        mask = torch.nn.functional.pad(mask, (num_prefix_tokens, 0), value=0)
+                    loss = torch.mean((1 - mask).unsqueeze(-1) * (reconstruction - masked_preds) ** 2)
+                elif loss_function == "unmasked_mse":
+                    # Calculate loss for unmasked tokens only.
+                    if reconstruction.shape[1] > mask.shape[1]:
+                        num_prefix_tokens = reconstruction.shape[1] - mask.shape[1]
+                        mask = torch.nn.functional.pad(mask, (num_prefix_tokens, 0), value=1)
+                    loss = torch.mean(mask.unsqueeze(-1) * (reconstruction - masked_preds) ** 2)
 
             if accum_steps > 1:
                 loss /= accum_steps
@@ -1038,6 +1054,20 @@ def validate(
                     loss = torch.nn.functional.mse_loss(reconstruction, masked_preds)
                 elif loss_function == "cosine":
                     loss = 1 - torch.nn.functional.cosine_similarity(reconstruction, masked_preds, dim=-1).mean()
+                elif loss_function == "l1":
+                    loss = torch.nn.functional.l1_loss(reconstruction, masked_preds)
+                elif loss_function == "masked_mse":
+                    # Calculate loss for masked tokens only.
+                    if reconstruction.shape[1] > mask.shape[1]:
+                        num_prefix_tokens = reconstruction.shape[1] - mask.shape[1]
+                        mask = torch.nn.functional.pad(mask, (num_prefix_tokens, 0), value=1)
+                    loss = torch.mean((1 - mask).unsqueeze(-1) * (reconstruction - masked_preds) ** 2)
+                elif loss_function == "unmasked_mse":
+                    # Calculate loss for unmasked tokens only.
+                    if reconstruction.shape[1] > mask.shape[1]:
+                        num_prefix_tokens = reconstruction.shape[1] - mask.shape[1]
+                        mask = torch.nn.functional.pad(mask, (num_prefix_tokens, 0), value=1)
+                    loss = torch.mean(mask.unsqueeze(-1) * (reconstruction - masked_preds) ** 2)
 
             if args.distributed:
                 reduced_loss = utils.reduce_tensor(loss.data, args.world_size)

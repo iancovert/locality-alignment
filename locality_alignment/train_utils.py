@@ -4,17 +4,15 @@ Modified from https://github.com/huggingface/pytorch-image-models/blob/main/timm
 and https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/_helpers.py
 """
 
-import operator
 import os
-import logging
 import timm
-from typing import Union, Optional, Any, Callable
-
 import torch
-
+import logging
+import operator
+from typing import Union, Optional, Any, Callable
 from timm.utils.model import unwrap_model, get_state_dict
-
 from .model_utils import MaskEmbedStudent
+
 
 try:
     import safetensors.torch
@@ -155,11 +153,15 @@ class CheckpointSaver(timm.utils.CheckpointSaver):
 def auto_filter_fn(state_dict: dict[str, Any], model: torch.nn.Module) -> dict[str, Any]:
     """Perform automatic filtering of state dict keys based on model."""
     if isinstance(model, MaskEmbedStudent):
-        # No changes necessary.
+        # Loading into MaskEmbedStudent model, do nothing.
+        pass
+
+    elif not all([key.split(".")[0] in ["encoder", "decoder"] for key in state_dict.keys()]):
+        # Checkpoint isn't MaskEmbedStudent model, do nothing.
         pass
 
     else:
-        # Extract encoder keys only.
+        # Loading into vision backbone, extract encoder keys only.
         logging.info("Filtering encoder keys from checkpoint state_dict")
         state_dict = {k.replace("encoder.", ""): v for k, v in state_dict.items() if k.startswith("encoder.")}
 

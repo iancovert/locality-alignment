@@ -46,7 +46,7 @@ Training progress is logged to wandb, and checkpoints are saved in the `output` 
 The key idea behind MaskEmbed is that pre-trained models have latent knowledge of local semantics that we can extract using masking. As a source of self-supervision, we mask out patches and use the frozen model to produce a masked view, which only reflects the unmasked contents. We then fork the model into a trainable copy accompanied by a lightweight decoder, and use these to predict the masked view: the fine-tuned encoder predicts rich patch embeddings given the unmasked image, which are masked and then passed to the decoder to predict the masked view. The model is trained to minimize the difference between these two predictions.
 
 <p align="center">
-  <img src="training_diagram.png" alt="MaskEmbed" style="max-width: 540px; width: 100%;" />
+  <img src="training_diagram.png" alt="MaskEmbed" style="max-width: 540px;" />
 </p>
 
 

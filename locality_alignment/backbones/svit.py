@@ -5,7 +5,7 @@ from functools import partial
 
 import timm
 from timm.layers import Mlp, DropPath
-from timm.models.registry import register_model
+from timm.models import register_model
 from timm.models.vision_transformer import LayerScale, VisionTransformer
 
 
