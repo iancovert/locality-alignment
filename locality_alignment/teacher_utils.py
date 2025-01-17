@@ -51,7 +51,7 @@ def convert_to_teacher_model(model: nn.Module, skip_blocks: int = 0, prefix_only
 def convert_to_mim_teacher_model(model: nn.Module) -> nn.Module:
     """
     Convert to MIM teacher model.
-    
+
     Args:
       model: nn.Module, original model.
       skip_blocks: int, number of blocks to skip from the output layer.

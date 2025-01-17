@@ -1,0 +1,59 @@
+# Dataset
+data_dir: data/imagenet
+num_classes: 1000
+train_split: train
+val_split: val
+
+# Model
+model: svit_large_patch14_clip_quickgelu_336
+pretrained: false
+initial_checkpoint: output/clip-vit-l-336-maskembed/model_best.pth.tar
+output_head: transformer
+
+# Batch size
+batch_size: 64
+validation_batch_size: 64
+grad_accum_steps: 4
+
+# System optimizations
+amp: true
+amp_dtype: bfloat16
+torchcompile: inductor
+
+# Optimizer
+opt: adamw
+weight_decay: 0.01
+clip_grad: 3.0
+opt_kwargs:
+  layer_decay: 0.8
+
+# Learning rate schedule
+sched: cosine
+sched_on_updates: true
+lr: 6e-5
+min_lr: 6e-6
+warmup_lr: 0
+epochs: 50
+warmup_epochs: 5
+
+# Augmentation and regularization
+train_crop_mode: rkrc
+color_jitter: 0.3
+drop_path: 0.2
+mixup: 0.8
+cutmix: 1.0
+aa: rand-m9-mstd0.5-inc1
+reprob: 0.25
+smoothing: 0.1
+
+# Validation settings
+crop_pct: 0.9
+crop_mode: center
+
+# Misc
+workers: 24
+pin_mem: true
+output: output_ft
+experiment: clip-vit-l-336-aligned
+project: locality-alignment-ft
+log_wandb: true
