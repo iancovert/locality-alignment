@@ -5,9 +5,9 @@
 [![Timm](https://img.shields.io/badge/TIMM-1.0.8-black.svg?style=for-the-badge&logo=huggingface)](https://github.com/huggingface/pytorch-image-models)
 [![License](https://img.shields.io/github/license/iancovert/locality-alignment?style=for-the-badge)](LICENSE)
 
-This is a repository for *locality alignment*, a post-training stage that helps vision transformers (ViTs) learn to extract local image semantics (i.e., class contents for each image region). We use an efficient fine-tuning procedure to teach this capability using only self-supervision — masked embedding self-consistency (MaskEmbed). These techniques are introduced in [this paper](https://arxiv.org/abs/2410.11087).
+This is a repository for *locality alignment*, a post-training stage that helps vision transformers (ViTs) better extract local image semantics (i.e., class contents for each image region). We use an efficient fine-tuning procedure called masked embedding self-consistency (MaskEmbed) to teach this capability using only self-supervision. Our technique is introduced in [this paper](https://arxiv.org/abs/2410.11087).
 
-Locality alignment is useful for pre-trained backbones like CLIP and SigLIP that are only exposed to image-level supervision (e.g., image-caption pairs) instead of dense, region-level supervision. Our paper shows improved performance on a local feature probing benchmark, and better benchmark performance in vision-language models. See our repositories below for usage in these tasks:
+Locality alignment is useful for pre-trained backbones like CLIP and SigLIP that are only exposed to image-level supervision (e.g., image-caption pairs) instead of dense, region-level supervision. Our paper shows improved performance on a local feature probing benchmark, as well as several vision-language model (VLM) benchmarks. See our repositories below for usage in these tasks:
 
 - [Probing benchmark](https://github.com/iancovert/patch-seg)
 - [Vision-language models](https://github.com/iancovert/prismatic-vlms)
@@ -43,11 +43,57 @@ Training progress is logged to wandb, and checkpoints are saved in the `output` 
 
 # How it works
 
-The key idea behind MaskEmbed is that pre-trained models have latent knowledge of local semantics that we can extract using masking. As a source of self-supervision, we mask out patches and use the frozen model to produce a masked view, which only reflects the unmasked contents. We then fork the model into a trainable copy accompanied by a lightweight decoder, and use these to predict the masked view: the fine-tuned encoder predicts rich patch embeddings given the unmasked image, which are masked and then passed to the decoder to predict the masked view. The model is trained to minimize the difference between these two predictions.
+The key idea behind MaskEmbed is that pre-trained models have latent knowledge of local semantics that we can extract using masking. As a source of self-supervision, we mask out patches and use the frozen model to produce a masked view, which only encodes the unmasked contents. We then fork the model into a trainable copy accompanied by a lightweight decoder, and use these to predict the masked view: the fine-tuned encoder predicts rich patch embeddings given the unmasked image, which are masked and then passed to the decoder to predict the masked view. The model is trained to minimize the difference between these two predictions.
 
 <p align="center">
   <img src="training_diagram.png" alt="MaskEmbed" style="max-width: 540px;" />
 </p>
+
+# Checkpoints
+
+We provide checkpoints for several locality-aligned backbones, which are listed in the table below:
+
+| Backbone | Paper | Dataset | Checkpoint |
+|----------|-------|---------|------------|
+| CLIP ViT-B | [link](https://arxiv.org/abs/2103.00020) | ImageNet-21k | [link](https://drive.google.com/file/d/1jZcgXIRXSoObN0HmFjjd9Plp-U91C9a7/view?usp=share_link) |
+| CLIP ViT-L | [link](https://arxiv.org/abs/2103.00020) | ImageNet-21k | [link](https://drive.google.com/file/d/1IL_bbEyT1nvm-TUQLQw-7XIIAbrdv5PC/view?usp=share_link) |
+| CLIP ViT-L @ 336px | [link](https://arxiv.org/abs/2103.00020) | ImageNet-21k | [link](https://drive.google.com/file/d/1PyV7aSvQWiisruFx7f7XZFk72Dl1cRzE/view?usp=share_link) |
+| SigLIP ViT-SO400M @ 384px | [link](https://arxiv.org/abs/2103.00020) | ImageNet-21k | [link](https://drive.google.com/file/d/1hKIEXqREqVsPim1aIrJtFHUSplj2varv/view?usp=share_link) |
+
+To load the ViT backbone from a checkpoint, you can initialize the model with timm and then load the checkpoint with our `load_checkpoint_auto` function:
+
+```python
+import timm
+from locality_alignment import load_checkpoint_auto
+
+# Setup assuming CLIP ViT-L/14 @ 336px.
+arch_name = "svit_large_patch14_clip_quickgelu_336.openai"
+checkpoint_name = "clip-vit-l-336.pth.tar"
+# or "output/clip-vit-l-336/model_best.pth.tar" if trained locally
+
+# Create model.
+model = timm.create_model(arch_name, pretrained=False, num_classes=0)
+
+# Load checkpoint.
+non_matching_keys = load_checkpoint_auto(model, checkpoint_name, strict=False)
+# Note: non-matching keys will show that output head isn't loaded.
+```
+
+If you want to load *both the backbone and the decoder used in MaskEmbed*, this can also be done with `load_checkpoint_auto` once the combined module is initialized (see the training script).
+
+# Other training scripts
+
+We provide two other training scripts for (1) masked image modeling (MIM), which can be a helpful precursor for locality alignment, and (2) fine-tuning models for ImageNet classification. To launch a MIM training run with CLIP ViT-B, you can use the following command:
+
+```bash
+torchrun --standalone --nnodes=1 --nproc-per-node=4 scripts/mim.py --config configs-mim/clip-vit-b.yaml
+```
+
+To launch a fine-tuning run on ImageNet with CLIP ViT-B, you can use the following command:
+
+```bash
+torchrun --standalone --nnodes=1 --nproc-per-node=4 scripts/finetune.py --config configs-ft/clip-vit-b.yaml
+```
 
 
 ### Acknowledgement
