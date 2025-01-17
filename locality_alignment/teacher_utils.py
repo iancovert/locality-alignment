@@ -1,32 +1,7 @@
 import types
 import torch
 import torch.nn as nn
-from .model_utils import Scale
-
-
-class MaskLayer(nn.Module):
-    """
-    Mask layer for images.
-
-    Args:
-      image_width: int, width of the image.
-      patch_size: int, width of each image patch.
-    """
-
-    def __init__(self, image_width: int, patch_size: int) -> None:
-        super(MaskLayer, self).__init__()
-        self.mask_width = image_width // patch_size
-        self.upsample_factor = patch_size
-
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        mask = mask.view(-1, 1, self.mask_width, self.mask_width)
-        mask = nn.functional.interpolate(mask, scale_factor=self.upsample_factor)
-        if mask.shape[2] != x.shape[2] or mask.shape[3] != x.shape[3]:
-            # Zero-pad for irregular patch/image sizes (occurs for vit_so400m_patch14_siglip_384).
-            height_pad = x.shape[2] - mask.shape[2]
-            width_pad = x.shape[3] - mask.shape[3]
-            mask = nn.functional.pad(mask, (0, width_pad, 0, height_pad))
-        return x * mask
+from .model_utils import MaskLayer, Scale
 
 
 def convert_to_teacher_model(model: nn.Module, skip_blocks: int = 0, prefix_only: bool = False) -> nn.Module:
@@ -67,6 +42,28 @@ def convert_to_teacher_model(model: nn.Module, skip_blocks: int = 0, prefix_only
             x = self.forward_features(x)
             x = self.output_scaling(x)
             return x
+
+    model.forward = types.MethodType(_forward, model)
+
+    return model
+
+
+def convert_to_mim_teacher_model(model: nn.Module) -> nn.Module:
+    """
+    Convert to MIM teacher model.
+    
+    Args:
+      model: nn.Module, original model.
+      skip_blocks: int, number of blocks to skip from the output layer.
+    """
+    # Setup for output scaling layer.
+    model.output_scaling = Scale(1)
+
+    # Override forward function.
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.forward_features(x)
+        x = self.output_scaling(x)
+        return x
 
     model.forward = types.MethodType(_forward, model)
 

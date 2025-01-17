@@ -5,6 +5,31 @@ from typing import Optional
 from timm.models.vision_transformer import Block
 
 
+class MaskLayer(nn.Module):
+    """
+    Mask layer for images.
+
+    Args:
+      image_width: int, width of the image.
+      patch_size: int, width of each image patch.
+    """
+
+    def __init__(self, image_width: int, patch_size: int) -> None:
+        super(MaskLayer, self).__init__()
+        self.mask_width = image_width // patch_size
+        self.upsample_factor = patch_size
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        mask = mask.view(-1, 1, self.mask_width, self.mask_width)
+        mask = nn.functional.interpolate(mask, scale_factor=self.upsample_factor)
+        if mask.shape[2] != x.shape[2] or mask.shape[3] != x.shape[3]:
+            # Zero-pad for irregular patch/image sizes (occurs for vit_so400m_patch14_siglip_384).
+            height_pad = x.shape[2] - mask.shape[2]
+            width_pad = x.shape[3] - mask.shape[3]
+            mask = nn.functional.pad(mask, (0, width_pad, 0, height_pad))
+        return x * mask
+
+
 class Scale(nn.Module):
     """Scale output by a constant factor."""
 
@@ -104,3 +129,53 @@ class MaskEmbedStudent(nn.Module):
         num_masks = len(mask) // len(preds)
         preds_repeat = preds.repeat_interleave(num_masks, 0)
         return self.decoder(preds_repeat, mask)
+
+
+class TransformerPooling(nn.Module):
+    """Small output head transformer."""
+
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        num_tokens: int,
+        num_layers: int,
+    ) -> None:
+        super().__init__()
+
+        # Positional embeddings.
+        self.pos_embed = nn.Parameter(torch.randn(num_tokens, embed_dim) * 0.02)
+
+        # Transformer blocks (parameters set to match ViT-B architecture).
+        self.blocks = nn.Sequential(
+            *[
+                timm.models.vision_transformer.Block(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=4,
+                    qkv_bias=False,
+                    qk_norm=False,
+                    proj_drop=0,
+                    attn_drop=0,
+                    drop_path=0,
+                    norm_layer=nn.LayerNorm,
+                    act_layer=nn.GELU,
+                    mlp_layer=timm.layers.Mlp,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        # Output normalization.
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def _pos_embed(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.pos_embed
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Apply positional embeddings and transformer blocks.
+        x = x + self.pos_embed
+        x = self.blocks(x)
+        x = self.norm(x)
+        x = x.mean(dim=1)
+        return x
